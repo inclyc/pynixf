@@ -115,6 +115,93 @@ def perform_parent_analysis(node, src):
     print_parent_info(node)
 
 
+def perform_variable_lookup_analysis(node, src):
+    """Demonstrate the VariableLookup analysis."""
+    print("\nVariable Lookup Analysis:")
+    var_lookup = nixf.VariableLookupAnalysis()
+    var_lookup.run_on_ast(node)
+
+    # Find ExprVar nodes to analyze
+    var_nodes = []
+
+    def collect_var_nodes(node):
+        if isinstance(node, nixf.ExprVar):
+            var_nodes.append(node)
+
+        children = node.children()
+        for child in children:
+            if child is not None:
+                collect_var_nodes(child)
+
+    collect_var_nodes(node)
+
+    # Print variable lookup information
+    print(f"Found {len(var_nodes)} variable references:")
+    for i, var in enumerate(var_nodes):
+        print(
+            f"\nVariable {i+1}: {var.id().name()} at L{var.l_cur().line()}:{var.l_cur().column()}"
+        )
+
+        # Query lookup result
+        result = var_lookup.query(var)
+        print(f"  Lookup Result Kind: {result.kind}")
+
+        # Handle different result kinds
+        if result.kind == nixf.LookupResultKind.Defined:
+            definition = result.def_
+            if definition:
+                print(f"  Definition Source: {definition.source()}")
+                print(f"  Is Builtin: {definition.is_builtin()}")
+
+                # Show definition syntax
+                def_syntax = definition.syntax()
+                if def_syntax:
+                    print(
+                        f"  Defined at: L{def_syntax.l_cur().line()}:{def_syntax.l_cur().column()}"
+                    )
+                    print(f"  Definition: {repr(def_syntax.src(src))}")
+
+                # Show uses
+                uses = definition.uses()
+                print(f"  Uses: {len(uses)}")
+                for j, use in enumerate(uses[:3]):  # Show at most 3 uses
+                    print(
+                        f"    Use {j+1} at: L{use.l_cur().line()}:{use.l_cur().column()}"
+                    )
+                if len(uses) > 3:
+                    print(f"    ... and {len(uses) - 3} more uses")
+
+        elif result.kind == nixf.LookupResultKind.FromWith:
+            print("  Variable is from a 'with' expression")
+        elif result.kind == nixf.LookupResultKind.Undefined:
+            print("  Variable is undefined")
+        else:
+            print("  No such variable found in analysis")
+
+        # Get environment information
+        env = var_lookup.env(var)
+        if env:
+            print(f"  Has environment: Yes")
+            print(f"  Environment is 'with': {env.is_with()}")
+            if not env.is_with():
+                print(f"  Environment is live: {env.is_live()}")
+
+            # Show parent environments
+            parent_count = 0
+            parent = env.parent()
+            while parent:
+                parent_count += 1
+                parent = parent.parent()
+            print(f"  Parent environments: {parent_count}")
+
+    # Print diagnositics related to variable lookup
+    diags = var_lookup.diagnostics()
+
+    if diags:
+        print(f"\nFound {len(diags)} diagnostics related to variable lookup:")
+        print_diagnostics(diags)
+
+
 def main():
     if len(sys.argv) > 1:
         # Parse from file
@@ -130,6 +217,17 @@ def main():
   z = { a = 1; b = 2; };
   inherit (z) a;
   broken = a.;
+
+  c =   # For variable lookup demonstration
+  let
+    foo = 42;
+    bar = foo + 1;
+    unused = 100;
+  in
+  with z; {
+    result = foo + bar + a + b;
+    unknown = notDefined;
+  };
 }
 """
 
@@ -147,6 +245,9 @@ def main():
 
     # Perform parent map analysis
     perform_parent_analysis(node, src)
+
+    # Perform variable lookup analysis
+    perform_variable_lookup_analysis(node, src)
 
 
 if __name__ == "__main__":
