@@ -1,0 +1,12 @@
+[project]
+name = 'pynixf'
+version = '0.1.0'
+description = 'Python bindings for libnixf'
+requires-python = ">=3.12"
+dependencies = []
+
+
+
+[build-system]
+build-backend = 'mesonpy'
+requires = []
