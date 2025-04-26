@@ -9,4 +9,9 @@ dependencies = []
 
 [build-system]
 build-backend = 'mesonpy'
-requires = []
+requires = ["meson-python"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
