@@ -32,8 +32,8 @@ public:
   void runOnAST(const nixf::Node &root) { analysis->runOnAST(root); }
 
   nixf::VariableLookupAnalysis::LookupResult
-  query(const nixf::Node &var) const {
-    return analysis->query(static_cast<const nixf::ExprVar &>(var));
+  query(const nixf::ExprVar &var) const {
+    return analysis->query(var);
   }
 
   const nixf::Definition *toDef(const nixf::Node &node) const {
