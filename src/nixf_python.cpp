@@ -8,6 +8,7 @@
 #include "nixf/Basic/Nodes/Simple.h"
 #include "nixf/Parse/Parser.h"
 #include "nixf/Sema/ParentMap.h"
+#include "nixf/Sema/VariableLookup.h"
 
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -15,6 +16,38 @@
 #include <vector>
 
 namespace py = pybind11;
+
+// Python-friendly wrapper for VariableLookupAnalysis that owns the diagnostics
+// vector
+class VariableLookupAnalysis {
+private:
+  std::vector<nixf::Diagnostic> diagnostics;
+  std::unique_ptr<nixf::VariableLookupAnalysis> analysis;
+
+public:
+  VariableLookupAnalysis()
+      : diagnostics(),
+        analysis(std::make_unique<nixf::VariableLookupAnalysis>(diagnostics)) {}
+
+  void runOnAST(const nixf::Node &root) { analysis->runOnAST(root); }
+
+  nixf::VariableLookupAnalysis::LookupResult
+  query(const nixf::ExprVar &var) const {
+    return analysis->query(var);
+  }
+
+  const nixf::Definition *toDef(const nixf::Node &node) const {
+    return analysis->toDef(node);
+  }
+
+  const nixf::EnvNode *env(const nixf::Node *node) const {
+    return analysis->env(node);
+  }
+
+  const std::vector<nixf::Diagnostic> &getDiagnostics() const {
+    return diagnostics;
+  }
+};
 
 PYBIND11_MODULE(nixf, m) {
   m.doc() = "Python bindings for nixf library";
@@ -184,6 +217,63 @@ PYBIND11_MODULE(nixf, m) {
       .def("static_name", [](const nixf::AttrName &a) {
         return a.isStatic() ? a.staticName() : std::string();
       });
+
+  // Expose Definition class and DefinitionSource enum
+  py::enum_<nixf::Definition::DefinitionSource>(m, "DefinitionSource")
+      .value("With", nixf::Definition::DS_With)
+      .value("Let", nixf::Definition::DS_Let)
+      .value("LambdaArg", nixf::Definition::DS_LambdaArg)
+      .value("LambdaNoArg_Formal", nixf::Definition::DS_LambdaNoArg_Formal)
+      .value("LambdaWithArg_Arg", nixf::Definition::DS_LambdaWithArg_Arg)
+      .value("LambdaWithArg_Formal", nixf::Definition::DS_LambdaWithArg_Formal)
+      .value("Rec", nixf::Definition::DS_Rec)
+      .value("Builtin", nixf::Definition::DS_Builtin);
+
+  py::class_<nixf::Definition, std::shared_ptr<nixf::Definition>>(m,
+                                                                  "Definition")
+      .def("syntax", &nixf::Definition::syntax,
+           py::return_value_policy::reference_internal)
+      .def("uses", &nixf::Definition::uses,
+           py::return_value_policy::reference_internal)
+      .def("source", &nixf::Definition::source)
+      .def("is_builtin", &nixf::Definition::isBuiltin);
+
+  py::class_<nixf::EnvNode>(m, "EnvNode")
+      .def("parent", &nixf::EnvNode::parent,
+           py::return_value_policy::reference_internal)
+      .def("syntax", &nixf::EnvNode::syntax,
+           py::return_value_policy::reference_internal)
+      .def("is_with", &nixf::EnvNode::isWith)
+      .def("is_live", &nixf::EnvNode::isLive);
+
+  // Expose VariableLookupAnalysis::LookupResultKind enum
+  py::enum_<nixf::VariableLookupAnalysis::LookupResultKind>(m,
+                                                            "LookupResultKind")
+      .value("Undefined",
+             nixf::VariableLookupAnalysis::LookupResultKind::Undefined)
+      .value("FromWith",
+             nixf::VariableLookupAnalysis::LookupResultKind::FromWith)
+      .value("Defined", nixf::VariableLookupAnalysis::LookupResultKind::Defined)
+      .value("NoSuchVar",
+             nixf::VariableLookupAnalysis::LookupResultKind::NoSuchVar);
+
+  // Expose VariableLookupAnalysis::LookupResult struct
+  py::class_<nixf::VariableLookupAnalysis::LookupResult>(m, "LookupResult")
+      .def_readonly("kind", &nixf::VariableLookupAnalysis::LookupResult::Kind)
+      .def_readonly("def_", &nixf::VariableLookupAnalysis::LookupResult::Def);
+
+  // Expose VariableLookupAnalysis wrapper class
+  py::class_<VariableLookupAnalysis>(m, "VariableLookupAnalysis")
+      .def(py::init<>())
+      .def("run_on_ast", &VariableLookupAnalysis::runOnAST)
+      .def("query", &VariableLookupAnalysis::query,
+           py::return_value_policy::copy)
+      .def("to_def", &VariableLookupAnalysis::toDef,
+           py::return_value_policy::reference_internal)
+      .def("env", &VariableLookupAnalysis::env,
+           py::return_value_policy::reference_internal)
+      .def("diagnostics", &VariableLookupAnalysis::getDiagnostics,
+           py::return_value_policy::reference_internal);
 
   // Expose ParentMap analysis
   py::class_<nixf::ParentMapAnalysis>(m, "ParentMapAnalysis")
