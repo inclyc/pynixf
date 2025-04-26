@@ -4,8 +4,10 @@
   pybind11,
   meson-python,
   meson,
-  pkgsStatic,
+  nixf,
   buildPythonPackage,
+  nlohmann_json,
+  boost,
 }:
 
 buildPythonPackage {
@@ -26,6 +28,8 @@ buildPythonPackage {
     python
     pybind11
     meson-python
-    pkgsStatic.nixf
+    nixf
+    nlohmann_json
+    boost
   ];
 }
